@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "webcrawl": {
+      "command": "python",
+      "args": ["-m", "webcrawl_mcp"],
+      "env": {
+        "PYTHONPATH": "src"
+      }
+    }
+  }
+}
