@@ -1,5 +1,9 @@
 # webcrawl-mcp
 
+[![PyPI version](https://img.shields.io/pypi/v/webcrawl-mcp.svg)](https://pypi.org/project/webcrawl-mcp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/webcrawl-mcp.svg)](https://pypi.org/project/webcrawl-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A lightweight MCP server that gives Claude Code (or any MCP client) the ability to scrape, search, map, and crawl the web — using free, open-source libraries. Firecrawl is supported as an **optional** fallback for JS-heavy sites when you have a key.
 
 ## Why
@@ -18,11 +22,7 @@ Most scraping doesn't actually need a headless browser. `trafilatura` handles th
 ## Install
 
 ```bash
-git clone https://github.com/andyliszewski/webcrawl.git
-cd webcrawl
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -e .
+pip install webcrawl-mcp
 ```
 
 Requires Python 3.12+.
@@ -30,7 +30,17 @@ Requires Python 3.12+.
 Quick smoke test (should print `Webcrawl MCP server running` then exit cleanly with Ctrl-C):
 
 ```bash
-python -m webcrawl_mcp
+webcrawl-mcp
+```
+
+### Install from source (for development)
+
+```bash
+git clone https://github.com/andyliszewski/webcrawl.git
+cd webcrawl
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -e .
 ```
 
 ## Configure your MCP client
@@ -43,17 +53,16 @@ Create `.mcp.json` in your project root (or merge into `~/.claude/settings.json`
 {
   "mcpServers": {
     "webcrawl": {
-      "command": "/ABSOLUTE/PATH/TO/webcrawl/venv/bin/python",
-      "args": ["-m", "webcrawl_mcp"],
-      "env": {
-        "PYTHONPATH": "/ABSOLUTE/PATH/TO/webcrawl/src"
-      }
+      "command": "uvx",
+      "args": ["webcrawl-mcp"]
     }
   }
 }
 ```
 
-Replace both `/ABSOLUTE/PATH/TO/webcrawl` with the directory you cloned into. `pwd` inside the repo gives you the value to paste. On Windows, use `venv\Scripts\python.exe`.
+This uses [`uvx`](https://docs.astral.sh/uv/guides/tools/) to run the package in a temporary environment — no manual install needed. If `uvx` is unavailable, install via `pip install webcrawl-mcp` and use `"command": "webcrawl-mcp"` with no args instead.
+
+For a source checkout (development), point `command` at your venv's Python and use `"args": ["-m", "webcrawl_mcp"]`.
 
 Then in a Claude Code session run `/mcp` — you should see `webcrawl` listed with four tools.
 

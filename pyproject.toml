@@ -5,8 +5,23 @@ build-backend = "hatchling.build"
 [project]
 name = "webcrawl-mcp"
 version = "0.1.0"
-description = "MCP server for web scraping and search"
+description = "Lightweight MCP server for web scraping, search, and crawling — local-first with optional Firecrawl fallback"
+authors = [{name = "Andy Liszewski"}]
+readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+keywords = ["mcp", "model-context-protocol", "claude", "web-scraping", "crawling", "search", "trafilatura"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "fastmcp>=2.0.0",
     "httpx>=0.27.0",
@@ -21,6 +36,14 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
 ]
+
+[project.scripts]
+webcrawl-mcp = "webcrawl_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/andyliszewski/webcrawl"
+Repository = "https://github.com/andyliszewski/webcrawl"
+Issues = "https://github.com/andyliszewski/webcrawl/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webcrawl_mcp"]
