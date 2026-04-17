@@ -4,7 +4,7 @@
 
 ## Problem
 
-Firecrawl's free tier is too restrictive for regular use, and the paid tier ($100/mo) is expensive for a tool that's "nice to have" rather than mission-critical. Claude Code needs reliable web fetching for research tasks, but not at that price point.
+Claude Code needs reliable web fetching for research tasks, but most pages (articles, docs, blogs) don't actually need a headless browser to extract well. A local-first approach using open-source extraction libraries handles the common case, keeps latency low, and avoids burning external API quota on content that plain HTTP + `trafilatura` would parse just as cleanly.
 
 ## User
 

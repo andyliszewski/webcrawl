@@ -4,7 +4,7 @@ A lightweight MCP server replacement for Firecrawl, enabling Claude Code to fetc
 
 ## Problem Statement
 
-Firecrawl's free tier has restrictive limits and the next tier is $100/month. Claude Code needs reliable web fetching capabilities for answering questions that require current internet information.
+Claude Code needs reliable web fetching capabilities for answering questions that require current internet information. Most target pages (articles, docs, blogs) can be extracted locally with open-source libraries, so a local-first server keeps latency low and minimizes reliance on external scraping APIs.
 
 ## Solution
 

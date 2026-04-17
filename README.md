@@ -4,7 +4,7 @@ A lightweight MCP server that gives Claude Code (or any MCP client) the ability 
 
 ## Why
 
-Firecrawl's free tier is tight and the next tier starts around $100/month. Most scraping doesn't actually need a headless browser — `trafilatura` handles the ~80% case (articles, docs, blogs) just fine. This server routes the easy stuff through local extraction and only hits Firecrawl when content quality is genuinely poor.
+Most scraping doesn't actually need a headless browser. `trafilatura` handles the ~80% case (articles, docs, blogs) locally, which is faster and keeps external API usage to a minimum. This server routes the easy stuff through local extraction and only falls back to Firecrawl when content quality is genuinely poor.
 
 ## Tools
 
