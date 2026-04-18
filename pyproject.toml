@@ -41,9 +41,9 @@ dev = [
 webcrawl-mcp = "webcrawl_mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/andyliszewski/webcrawl"
-Repository = "https://github.com/andyliszewski/webcrawl"
-Issues = "https://github.com/andyliszewski/webcrawl/issues"
+Homepage = "https://github.com/andyliszewski/webcrawl-mcp"
+Repository = "https://github.com/andyliszewski/webcrawl-mcp"
+Issues = "https://github.com/andyliszewski/webcrawl-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webcrawl_mcp"]

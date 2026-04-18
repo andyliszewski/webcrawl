@@ -36,8 +36,8 @@ webcrawl-mcp
 ### Install from source (for development)
 
 ```bash
-git clone https://github.com/andyliszewski/webcrawl.git
-cd webcrawl
+git clone https://github.com/andyliszewski/webcrawl-mcp.git
+cd webcrawl-mcp
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -e .

@@ -31,7 +31,7 @@ def _is_low_quality(content: str | None) -> bool:
     return False
 DEFAULT_USER_AGENT = os.environ.get(
     "USER_AGENT",
-    "Mozilla/5.0 (compatible; WebcrawlMCP/1.0; +https://github.com/andyliszewski/webcrawl)",
+    "Mozilla/5.0 (compatible; WebcrawlMCP/1.0; +https://github.com/andyliszewski/webcrawl-mcp)",
 )
 
 
