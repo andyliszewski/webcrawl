@@ -65,11 +65,17 @@ async def search_and_scrape(query: str, num_results: int = 5) -> list[dict]:
     for result in results:
         url = result["url"]
         try:
-            content = await scrape(url)
-            result["content"] = content
-            print(f"[webcrawl] fetched {len(content)} chars from {url}", file=sys.stderr)
+            scraped = await scrape(url)
+            result["content"] = scraped.content
+            result["source"] = scraped.source
+            print(
+                f"[webcrawl] fetched {len(scraped.content)} chars from {url} "
+                f"({scraped.source})",
+                file=sys.stderr,
+            )
         except Exception as e:
             print(f"[webcrawl] failed to fetch {url}: {e}", file=sys.stderr)
             result["content"] = None
+            result["source"] = None
 
     return results

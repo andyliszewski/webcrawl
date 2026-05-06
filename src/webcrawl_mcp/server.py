@@ -12,7 +12,7 @@ mcp = FastMCP("Webcrawl")
 
 
 @mcp.tool
-async def webcrawl_scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
+async def webcrawl_scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
     """Fetch a URL and extract main content as markdown.
 
     Args:
@@ -20,9 +20,14 @@ async def webcrawl_scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
         timeout: Request timeout in seconds (default: 30)
 
     Returns:
-        Markdown content of the page's main content
+        Dict with:
+          - content: markdown of the page's main content
+          - source:  one of "static_http", "static_http_retry",
+                     "firecrawl_transport_fallback", "firecrawl_quality_fallback"
+                     (see Issue #1)
     """
-    return await scrape(url, timeout)
+    result = await scrape(url, timeout)
+    return {"content": result.content, "source": result.source}
 
 
 @mcp.tool

@@ -2,6 +2,9 @@
 
 import os
 import sys
+from asyncio import sleep as _async_sleep
+from dataclasses import dataclass
+from typing import Literal
 
 import httpx
 import trafilatura
@@ -14,59 +17,100 @@ from webcrawl_mcp.firecrawl import is_configured as firecrawl_configured, scrape
 DEFAULT_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT", "30"))
 MIN_CONTENT_LENGTH = 200
 
+# Status codes that route to the transport-fallback branch (see Issue #1).
+TRANSPORT_FALLBACK_STATUSES = frozenset({403, 429, 503})
 
-def _is_low_quality(content: str | None) -> bool:
-    """Check if content is low quality and might need Firecrawl.
-
-    Args:
-        content: Extracted content
-
-    Returns:
-        True if content is empty or suspiciously short
-    """
-    if not content:
-        return True
-    if len(content) < MIN_CONTENT_LENGTH:
-        return True
-    return False
 DEFAULT_USER_AGENT = os.environ.get(
     "USER_AGENT",
     "Mozilla/5.0 (compatible; WebcrawlMCP/1.0; +https://github.com/andyliszewski/webcrawl-mcp)",
 )
 
 
+ProvenanceSource = Literal[
+    "static_http",
+    "static_http_retry",
+    "firecrawl_transport_fallback",
+    "firecrawl_quality_fallback",
+]
+
+
+@dataclass(frozen=True)
+class ScrapeResult:
+    """Scrape output with provenance.
+
+    Attributes:
+        content: Extracted markdown content
+        source: How the content was obtained (see ProvenanceSource)
+    """
+
+    content: str
+    source: ProvenanceSource
+
+
+class TransportError(Exception):
+    """Raised by fetch_url for statuses in TRANSPORT_FALLBACK_STATUSES.
+
+    Carries status_code and (for 429) parsed Retry-After so callers can
+    decide between polite retry, transport fallback, or re-raising.
+    """
+
+    def __init__(
+        self,
+        status_code: int,
+        url: str,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(f"transport error {status_code} for {url}")
+        self.status_code = status_code
+        self.url = url
+        self.retry_after = retry_after
+
+
+def _is_low_quality(content: str | None) -> bool:
+    """True if content is missing or shorter than MIN_CONTENT_LENGTH."""
+    if not content:
+        return True
+    if len(content) < MIN_CONTENT_LENGTH:
+        return True
+    return False
+
+
 def _parse_retry_after(value: str) -> float | None:
-    """Parse Retry-After header value.
+    """Parse Retry-After header value as seconds.
 
-    Args:
-        value: Header value (seconds or HTTP date)
-
-    Returns:
-        Seconds to wait, or None if unparseable
+    HTTP-date format is intentionally not supported; returns None for it.
     """
     try:
         return float(value)
     except ValueError:
-        # Could be HTTP date format, but we'll skip that complexity
         return None
+
+
+def _fallback_on_transport_error() -> bool:
+    """Read FALLBACK_ON_TRANSPORT_ERROR env flag (default false)."""
+    return os.environ.get("FALLBACK_ON_TRANSPORT_ERROR", "false").lower() == "true"
+
+
+def _polite_mode() -> bool:
+    """Read POLITE_MODE env flag (default true)."""
+    return os.environ.get("POLITE_MODE", "true").lower() != "false"
 
 
 async def fetch_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
     """Fetch URL content using httpx.
-
-    Respects per-domain rate limiting and Retry-After headers.
 
     Args:
         url: The URL to fetch
         timeout: Request timeout in seconds
 
     Returns:
-        Raw HTML content
+        Raw HTML content for 2xx responses.
 
     Raises:
-        httpx.HTTPError: On request failure
+        TransportError: For statuses in TRANSPORT_FALLBACK_STATUSES; carries
+            status_code and retry_after.
+        httpx.HTTPError: For other request failures.
     """
-    # Wait for rate limit if needed
     await rate_limiter.wait_if_needed(url)
 
     async with httpx.AsyncClient() as client:
@@ -77,31 +121,30 @@ async def fetch_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
             follow_redirects=True,
         )
 
-        # Record the request time
         rate_limiter.record_request(url)
 
-        # Handle Retry-After header
+        retry_after: float | None = None
         if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after:
-                seconds = _parse_retry_after(retry_after)
-                if seconds:
+            header = response.headers.get("Retry-After")
+            if header:
+                seconds = _parse_retry_after(header)
+                if seconds is not None:
+                    retry_after = seconds
                     rate_limiter.set_retry_after(url, seconds)
+
+        if response.status_code in TRANSPORT_FALLBACK_STATUSES:
+            raise TransportError(
+                status_code=response.status_code,
+                url=url,
+                retry_after=retry_after,
+            )
 
         response.raise_for_status()
         return response.text
 
 
 def extract_with_trafilatura(html: str, url: str) -> str | None:
-    """Extract main content from HTML using trafilatura.
-
-    Args:
-        html: Raw HTML content
-        url: Original URL (used for link resolution)
-
-    Returns:
-        Extracted markdown content, or None if extraction fails
-    """
+    """Extract main content as markdown via trafilatura."""
     return trafilatura.extract(
         html,
         url=url,
@@ -113,53 +156,20 @@ def extract_with_trafilatura(html: str, url: str) -> str | None:
 
 
 def extract_with_markdownify(html: str) -> str:
-    """Fallback extraction using markdownify.
-
-    Args:
-        html: Raw HTML content
-
-    Returns:
-        Markdown converted from full HTML
-    """
+    """Convert full HTML to markdown via markdownify."""
     return md(html, heading_style="ATX", strip=["script", "style", "nav", "footer"])
 
 
-async def scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
-    """Fetch URL and extract main content as markdown.
-
-    Extraction strategy:
-    1. trafilatura (best for articles/docs)
-    2. markdownify fallback (if trafilatura fails)
-    3. Firecrawl fallback (if configured and content still low quality)
-
-    Results are cached with configurable TTL.
-
-    Args:
-        url: The URL to scrape
-        timeout: Request timeout in seconds
-
-    Returns:
-        Markdown content of the page
-    """
-    # Check cache first
-    cached = cache.get(url)
-    if cached is not None:
-        return cached
-
-    html = await fetch_url(url, timeout)
-
-    # Try trafilatura first
+def _extract(html: str, url: str) -> str:
+    """Run local extraction (trafilatura, falling back to markdownify)."""
     content = extract_with_trafilatura(html, url)
-
     if content and len(content) >= MIN_CONTENT_LENGTH:
         print(
             f"[webcrawl] trafilatura: {len(content)} chars from {url}",
             file=sys.stderr,
         )
-        cache.set(url, content)
         return content
 
-    # Fallback to markdownify
     reason = "no content" if not content else f"only {len(content)} chars"
     print(
         f"[webcrawl] trafilatura {reason}, falling back to markdownify for {url}",
@@ -171,8 +181,104 @@ async def scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
         f"[webcrawl] markdownify: {len(content)} chars from {url}",
         file=sys.stderr,
     )
+    return content
 
-    # If still low quality and Firecrawl is configured, try Firecrawl
+
+async def _fetch_html_or_fallback(
+    url: str, timeout: int
+) -> tuple[Literal["static", "firecrawl"], str, ProvenanceSource]:
+    """Fetch HTML, applying polite retry and transport fallback per Issue #1.
+
+    Returns:
+        ("static", html, source)       — local extraction should run on html
+        ("firecrawl", content, source) — content is final; skip local extraction
+
+    Raises:
+        TransportError: When neither polite retry nor transport fallback yields
+            content (or fallback is disabled).
+        httpx.HTTPError: For non-fallback transport failures.
+    """
+    try:
+        html = await fetch_url(url, timeout)
+        return ("static", html, "static_http")
+    except TransportError as err:
+        # Polite retry: 429 with parseable Retry-After gets one bounded retry.
+        if (
+            err.status_code == 429
+            and _polite_mode()
+            and err.retry_after is not None
+        ):
+            # Cap at timeout (hostile servers); clamp negatives to 0 so
+            # asyncio.sleep doesn't raise.
+            wait = max(0.0, min(err.retry_after, float(timeout)))
+            print(
+                f"[webcrawl] 429 Retry-After {err.retry_after}s; polite retry "
+                f"after {wait:.1f}s for {url}",
+                file=sys.stderr,
+            )
+            await _async_sleep(wait)
+            try:
+                html = await fetch_url(url, timeout)
+                return ("static", html, "static_http_retry")
+            except TransportError as retry_err:
+                err = retry_err  # fall through to transport-fallback decision
+
+        if _fallback_on_transport_error():
+            if firecrawl_configured():
+                print(
+                    f"[webcrawl] transport error {err.status_code}; "
+                    f"falling back to Firecrawl for {url}",
+                    file=sys.stderr,
+                )
+                firecrawl_content = await scrape_with_firecrawl(url, timeout)
+                if firecrawl_content:
+                    return (
+                        "firecrawl",
+                        firecrawl_content,
+                        "firecrawl_transport_fallback",
+                    )
+                # Firecrawl returned None — surface the original transport error.
+                raise err
+            print(
+                f"[webcrawl] FALLBACK_ON_TRANSPORT_ERROR=true but no "
+                f"FIRECRAWL_API_KEY; raising {err.status_code} for {url}",
+                file=sys.stderr,
+            )
+
+        raise err
+
+
+async def scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> ScrapeResult:
+    """Fetch URL and extract main content as markdown.
+
+    Dispatch:
+    - 2xx → local extraction (trafilatura → markdownify); Firecrawl as a
+      quality fallback if the result is below MIN_CONTENT_LENGTH.
+    - {403, 429, 503} → polite retry (429 only) and/or Firecrawl transport
+      fallback, gated on POLITE_MODE and FALLBACK_ON_TRANSPORT_ERROR.
+
+    See Issue #1 for design rationale.
+
+    Args:
+        url: The URL to scrape
+        timeout: Request timeout in seconds
+
+    Returns:
+        ScrapeResult carrying content and provenance source.
+    """
+    cached = cache.get(url)
+    if cached is not None:
+        return cached
+
+    kind, payload, source = await _fetch_html_or_fallback(url, timeout)
+
+    if kind == "firecrawl":
+        result = ScrapeResult(content=payload, source=source)
+        cache.set(url, result)
+        return result
+
+    content = _extract(payload, url)
+
     if _is_low_quality(content) and firecrawl_configured():
         print(
             f"[webcrawl] content still low quality, trying Firecrawl for {url}",
@@ -180,7 +286,13 @@ async def scrape(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
         )
         firecrawl_content = await scrape_with_firecrawl(url, timeout)
         if firecrawl_content and len(firecrawl_content) > len(content or ""):
-            content = firecrawl_content
+            result = ScrapeResult(
+                content=firecrawl_content,
+                source="firecrawl_quality_fallback",
+            )
+            cache.set(url, result)
+            return result
 
-    cache.set(url, content)
-    return content
+    result = ScrapeResult(content=content, source=source)
+    cache.set(url, result)
+    return result

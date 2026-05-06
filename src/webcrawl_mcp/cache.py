@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from collections import OrderedDict
+from typing import Any
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 DEFAULT_CACHE_TTL = int(os.environ.get("CACHE_TTL", "900"))  # 15 minutes
@@ -58,21 +59,21 @@ class TTLCache:
         """
         self.maxsize = maxsize
         self.ttl = ttl
-        self._cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        self._cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
 
     @property
     def enabled(self) -> bool:
         """Check if caching is enabled."""
         return self.ttl > 0
 
-    def get(self, url: str) -> str | None:
-        """Get cached content for URL.
+    def get(self, url: str) -> Any | None:
+        """Get cached value for URL.
 
         Args:
             url: URL to look up
 
         Returns:
-            Cached content if found and not expired, None otherwise
+            Cached value if found and not expired, None otherwise
         """
         if not self.enabled:
             return None
@@ -82,7 +83,7 @@ class TTLCache:
         if key not in self._cache:
             return None
 
-        timestamp, content = self._cache[key]
+        timestamp, value = self._cache[key]
 
         # Check if expired
         if time.time() - timestamp > self.ttl:
@@ -93,14 +94,14 @@ class TTLCache:
         # Move to end (most recently used)
         self._cache.move_to_end(key)
         print(f"[webcrawl] cache hit: {url}", file=sys.stderr)
-        return content
+        return value
 
-    def set(self, url: str, content: str) -> None:
-        """Store content in cache.
+    def set(self, url: str, value: Any) -> None:
+        """Store value in cache.
 
         Args:
             url: URL as key
-            content: Content to cache
+            value: Value to cache
         """
         if not self.enabled:
             return
@@ -111,7 +112,7 @@ class TTLCache:
         while len(self._cache) >= self.maxsize:
             self._cache.popitem(last=False)
 
-        self._cache[key] = (time.time(), content)
+        self._cache[key] = (time.time(), value)
 
     def clear(self) -> None:
         """Clear all cached entries."""

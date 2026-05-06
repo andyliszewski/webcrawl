@@ -172,12 +172,13 @@ async def crawl(
             title = extract_title(html)
 
             # Extract content using scraper (will use cache if available)
-            content = await scrape(current_url)
+            scraped = await scrape(current_url)
 
             results.append({
                 "url": current_url,
                 "title": title,
-                "content": content,
+                "content": scraped.content,
+                "source": scraped.source,
             })
 
             print(
